@@ -201,7 +201,7 @@ int main(int argc, char** argv)
     iterations, finished_tasks, &start, &stop);
 
   printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, iterations, ntime);
-  printf("Scalability overhead: %f%\n", (ntime / (baseline / max_sms) - 1) * 100);
+  printf("Scalability overhead: %f%%\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
 
   // cleanup
   free(hc);
