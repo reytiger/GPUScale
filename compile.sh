@@ -1,11 +1,15 @@
 #!/bin/bash
 
-# -03
+# Makefile-esqe defines
+cc='nvcc'
+flags='-g -G' # -03
+app='-o gpuscale gpuscale.cu'
+
 if [ `hostname` == "eecs-hpc-1" ]
 then
   echo "Compiling for eecs-hpc-1 (Teslsa)"
-  nvcc -g -G -D NUM_SMS=15 -o gpuscale gpuscale.cu -arch=sm_35
+  $cc $flags $app -D NUM_SMS=15 -arch=sm_35
 else
   echo "Compiling for Issac (GTX 660)"
-  nvcc -g -G -D NUM_SMS=5 -o gpuscale gpuscale.cu -arch=sm_30
+  $cc $flags $app -D NUM_SMS=5 -arch=sm_30
 fi
