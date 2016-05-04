@@ -156,7 +156,7 @@ float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc,
 void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline)
 {
-  printf("Running %d iterations on %d SMs...\n", ITERATIONS, max_sms);
+  printf("\nRunning %d iterations on %d SMs...\n", ITERATIONS, max_sms);
   float ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
     finished_tasks, start, stop, ITERATIONS);
 
@@ -272,9 +272,9 @@ int main(int argc, char** argv)
     // run the indicated test
     if(allSMCombos)
     {
+      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
       for(int sms_count = 1; sms_count <= NUM_SMS; ++sms_count)
       {
-        baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
         run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline);
       }
     }
