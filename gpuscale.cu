@@ -157,8 +157,18 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline)
 {
   printf("\nRunning %d iterations on %d SMs...\n", ITERATIONS, max_sms);
-  float ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
-    finished_tasks, start, stop, ITERATIONS);
+  float ntime = 0.f;
+  
+  // a single SMs is equal to the baseline
+  if(max_sms > 1)
+  {
+    ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
+      finished_tasks, start, stop, ITERATIONS);
+  }
+  else
+  {
+    ntime = baseline;
+  }
 
   printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, ITERATIONS, ntime);
   printf("Scalability overhead: %f%%\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
