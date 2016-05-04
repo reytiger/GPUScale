@@ -5,7 +5,7 @@
 #include <cuda_runtime_api.h>
 #include <cuda_runtime.h>
 
-#define BLK_SIZE 256
+#define BLK_SIZE 128
 #define BLK_NUM 65536
 #define ITERATIONS 200
 // 2^24 items
@@ -97,7 +97,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   cudaEventRecord(*start);
 
   // perform the math op
-  limit_sms_kernel<<<NUM_SMS * 32, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM);
+  limit_sms_kernel<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM);
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
