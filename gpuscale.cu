@@ -62,7 +62,8 @@ __global__ void limit_sms_kernel(kernelPointer_t kp, int *c, int *a, int *b, uns
       return;
 
     int gid = taskid * BLK_SIZE + threadIdx.x;
-    (*kp)(c, a, b, gid);
+    for(int i = 0; i < ITERATIONS / 5; ++i)
+      (*kp)(c, a, b, gid);
   }
 }
 
