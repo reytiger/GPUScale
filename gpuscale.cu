@@ -116,11 +116,11 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
 
 // runs the benchmark serveral times to get an average
 float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations)
 {
   float total_time = 0.f;
   float elapsed_time = 0.f;
-  for(unsigned int i = 0; i < ITERATIONS; ++i)
+  for(unsigned int i = 0; i < iterations; ++i)
   {
     elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop);
     if(elapsed_time == TIME_FAIL)
@@ -139,21 +139,26 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 }
 
 
-// main test driver
-void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
+float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
 {
-  printf("\nUsing %d Sms\n", max_sms);
-  printf("Running %d iterations to establish baseline...\n", ITERATIONS);
+  printf("Running %d iterations to establish baseline...\n", ITERATIONS * 3);
   // establish baseline time
-  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements,
-    finished_tasks, start, stop);
+  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3);
 
-  printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS, baseline);
+  printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS * 3, baseline);
 
+  return baseline;
+}
+
+
+// main test driver
+void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline)
+{
   printf("Running %d iterations on %d SMs...\n", ITERATIONS, max_sms);
   float ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
-    finished_tasks, start, stop);
+    finished_tasks, start, stop, ITERATIONS);
 
   printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, ITERATIONS, ntime);
   printf("Scalability overhead: %f%%\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
@@ -263,24 +268,27 @@ int main(int argc, char** argv)
     // get a pointer to the device function into host memory
     cudaMemcpyFromSymbol(&h_kp, d_kp[kernelIdx], sizeof(kernelPointer_t));
 
+    float baseline = 0.f;
     // run the indicated test
     if(allSMCombos)
     {
       for(int sms_count = 1; sms_count <= NUM_SMS; ++sms_count)
       {
-        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop);
+        baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
+        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline);
       }
     }
     else
     {
-      int smsChoice = -1;
-      while(smsChoice < 0 || smsChoice > NUM_SMS)
+      int sms_choice = -1;
+      while(sms_choice < 0 || sms_choice > NUM_SMS)
       {
         printf("\nHow many SMs would you like to run this kernel on?: ");
-        scanf(" %d", &smsChoice);
+        scanf(" %d", &sms_choice);
       }
 
-      run_test(h_kp, da, db, dc, hc, smsChoice, num_elements, finished_tasks, &start, &stop);
+      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
+      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks, &start, &stop, baseline);
     }
   }
   // return 0;
