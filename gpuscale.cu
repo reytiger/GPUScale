@@ -20,7 +20,8 @@ typedef void (*kernelPointer_t)(int*, int*, int*, int);
 // ---All math kernels----
 __device__ __forceinline__ void vecadd(int *c, int* a, int* b, int gid)
 {
-  c[gid] = a[gid] + b[gid];
+  for(int i = 0; i < ITERATIONS / 5; ++i)
+    c[gid] = a[gid] + b[gid];
 }
 
 
@@ -62,8 +63,7 @@ __global__ void limit_sms_kernel(kernelPointer_t kp, int *c, int *a, int *b, uns
       return;
 
     int gid = taskid * BLK_SIZE + threadIdx.x;
-    for(int i = 0; i < ITERATIONS / 5; ++i)
-      (*kp)(c, a, b, gid);
+    (*kp)(c, a, b, gid);
   }
 }
 
