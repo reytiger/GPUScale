@@ -144,7 +144,7 @@ float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc,
 {
   printf("Running %d iterations to establish baseline...\n", ITERATIONS * 3);
   // establish baseline time
-  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3);
+  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3) / 3;
 
   printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS * 3, baseline);
 
