@@ -20,8 +20,7 @@ typedef void (*kernelPointer_t)(int*, int*, int*, int);
 // ---All math kernels----
 __device__ __forceinline__ void vecadd(int *c, int* a, int* b, int gid)
 {
-  for(int i = 0; i < ITERATIONS / 5; ++i)
-    c[gid] = a[gid] + b[gid];
+  c[gid] = a[gid] + b[gid];
 }
 
 
@@ -40,7 +39,7 @@ __device__ __forceinline__ uint get_smid(void)
 
 // runs a kernel on a specified number of gpus
 __global__ void limit_sms_kernel(kernelPointer_t kp, int *c, int *a, int *b, unsigned int max_sms,
-        unsigned int *finished_tasks, unsigned int ntasks)
+        unsigned int *finished_tasks, unsigned int ntasks, unsigned int *d_wd)
 {
   // task id is shared amongst all threads in the block
   __shared__ int taskid;
@@ -55,15 +54,21 @@ __global__ void limit_sms_kernel(kernelPointer_t kp, int *c, int *a, int *b, uns
   {
     if(threadIdx.x == 0)
     {
-     taskid = atomicInc(&finished_tasks[0], INT_MAX); 
+      taskid = atomicInc(&finished_tasks[0], INT_MAX); 
+
+      // record the work being done by this block on the SM
+      if(d_wd && taskid >= ntasks)
+      {
+        atomicInc(&d_wd[smid], INT_MAX);
+      }
     }
     __syncthreads();
 
     if(taskid >= ntasks)
       return;
 
-    int gid = taskid * BLK_SIZE + threadIdx.x;
-    (*kp)(c, a, b, gid);
+    // launch the kernel
+    (*kp)(c, a, b, taskid * BLK_SIZE + threadIdx.x);
   }
 }
 
@@ -89,7 +94,7 @@ bool verify_result(int num_elements, int *resultArray)
 
 // launches the addition kernel and records timing information
 float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, unsigned int *d_wd)
 {
   // reset the progress marker and result array
   cudaMemset(finished_tasks, 0, sizeof(unsigned int));
@@ -98,7 +103,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   cudaEventRecord(*start);
 
   // perform the math op
-  limit_sms_kernel<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM);
+  limit_sms_kernel<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
@@ -117,13 +122,17 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
 
 // runs the benchmark serveral times to get an average
 float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations, unsigned int *d_wd)
 {
   float total_time = 0.f;
   float elapsed_time = 0.f;
+
+  // reset work distribution counters
+  cudaMemset(d_wd, 0, sizeof(int) * NUM_SMS);
+
   for(unsigned int i = 0; i < iterations; ++i)
   {
-    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop);
+    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd);
     if(elapsed_time == TIME_FAIL)
     {
       // repeat this iteration
@@ -143,9 +152,9 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
 {
-  printf("Running %d iterations to establish baseline...\n", ITERATIONS * 3);
+  printf("Running %d iterations over %d elements to establish baseline...\n", ITERATIONS * 3, num_elements);
   // establish baseline time
-  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3) / 3;
+  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL) / 3;
 
   printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS * 3, baseline);
 
@@ -155,7 +164,8 @@ float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc,
 
 // main test driver
 void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline,
+  unsigned int* h_wd, unsigned int *d_wd)
 {
   printf("\nRunning %d iterations on %d SMs...\n", ITERATIONS, max_sms);
   float ntime = 0.f;
@@ -164,15 +174,29 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   if(max_sms > 1)
   {
     ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
-      finished_tasks, start, stop, ITERATIONS);
+      finished_tasks, start, stop, ITERATIONS, d_wd);
   }
   else
   {
     ntime = baseline;
   }
 
+  // get the work distribution stats
+  cudaMemcpy(h_wd, d_wd, NUM_SMS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+
   printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, ITERATIONS, ntime);
-  printf("Scalability overhead: %f%%\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
+  printf("Scalability overhead: %f%%\nWork distribution:\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
+
+  unsigned int total_work = 0;
+  for(int i = 0; i < NUM_SMS; ++i)
+    total_work += h_wd[i] / ITERATIONS;
+
+  printf("Total thread block work units: %u\n", total_work);
+  for(int i = 0; i < NUM_SMS; ++i)
+  {
+    printf("  SM #%d - %u tasks\n", i, h_wd[i] / ITERATIONS);
+    printf("  SM #%d - %f%%\n", i, h_wd[i] / ITERATIONS / num_elements);
+  }
 }
 
 
@@ -210,17 +234,20 @@ int main(int argc, char** argv)
 
   // host arrays
   int *hc = NULL;
+  unsigned int h_wd[NUM_SMS];
 
   // device arrays
   int *da = NULL;
   int *db = NULL;
   int *dc = NULL;
-
-  // one-time allocation and init
-  init_arrays(num_elements, &hc, &da, &db, &dc);
+  unsigned int *d_wd = NULL;
 
   // progress counter
   unsigned int *finished_tasks;
+
+  // one-time allocation and init
+  init_arrays(num_elements, &hc, &da, &db, &dc);
+  cudaMalloc((void**)&d_wd, sizeof(unsigned int) * NUM_SMS);
   cudaMalloc((void**)&finished_tasks, sizeof(unsigned int));
 
   // setup timing events
@@ -262,6 +289,7 @@ int main(int argc, char** argv)
         cudaFree(da);
         cudaFree(db);
         cudaFree(dc);
+        cudaFree(d_wd);
         return 0;
       case 1:
         allSMCombos = !allSMCombos;
@@ -286,7 +314,7 @@ int main(int argc, char** argv)
       baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
       for(int sms_count = 1; sms_count <= NUM_SMS; ++sms_count)
       {
-        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline);
+        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline, h_wd, d_wd);
       }
     }
     else
@@ -299,7 +327,7 @@ int main(int argc, char** argv)
       }
 
       baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
-      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks, &start, &stop, baseline);
+      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks, &start, &stop, baseline, h_wd, d_wd);
     }
   }
   // return 0;

@@ -2,8 +2,8 @@
 
 # Makefile-esqe defines
 cc='nvcc'
-#flags='-g -G'
-flags='-O3'
+flags='-g -G'
+#flags='-O3'
 app='-o gpuscale gpuscale.cu'
 
 if [ `hostname` == "eecs-hpc-1" ]
