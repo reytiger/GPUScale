@@ -6,7 +6,8 @@
 #include <cuda_runtime.h>
 
 #define BLK_SIZE 256
-#define BLK_NUM 64000
+#define BLK_NUM 65536
+#define ITERATIONS 1000
 
 #define TIME_FAIL -1.0f
 //~16 million integer pairs to sum
@@ -79,7 +80,7 @@ float benchmark(int* da, int* db, int* dc, int *hc, int max_sms, int num_element
   cudaEventRecord(*start);
 
   // perform c = a + b
-  add_kernel<<<NUM_SMS * 16, BLK_SIZE>>> (dc, da, db, max_sms, finished_tasks, BLK_NUM);
+  add_kernel<<<NUM_SMS * 32, BLK_SIZE>>> (dc, da, db, max_sms, finished_tasks, BLK_NUM);
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
@@ -98,11 +99,11 @@ float benchmark(int* da, int* db, int* dc, int *hc, int max_sms, int num_element
 
 // runs the benchmark serveral times to get an average
 float benchmark_avg(int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
-  unsigned int iterations, unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
 {
   float total_time = 0.f;
   float elapsed_time = 0.f;
-  for(unsigned int i = 0; i < iterations; ++i)
+  for(unsigned int i = 0; i < ITERATIONS; ++i)
   {
     elapsed_time = benchmark(da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop);
     if(elapsed_time == TIME_FAIL)
@@ -117,7 +118,7 @@ float benchmark_avg(int* da, int *db, int* dc, int* hc, int max_sms, int num_ele
     }
   }
 
-  return total_time / iterations;
+  return total_time / ITERATIONS;
 }
 
 
@@ -150,9 +151,9 @@ void init_arrays(int num_elements, int **hc, int **da, int **db, int **dc)
 
 int main(int argc, char** argv)
 {
-  if(argc < 3)
+  if(argc < 2)
   {
-    fprintf(stderr, "Usage %s SMs_to_use iterations\n", argv[0]);
+    fprintf(stderr, "Usage %s SMs_to_use\n", argv[0]);
     exit(1);
   }
 
@@ -167,9 +168,7 @@ int main(int argc, char** argv)
     max_sms = NUM_SMS;
   }
 
-  unsigned int iterations = atoi(argv[2]);
-
-  int num_elements = BLK_SIZE * BLK_NUM;
+  int num_elements = BLK_NUM * BLK_SIZE; //1 << 16; // 2^16 = 65536
 
   // host arrays
   int *hc = NULL;
@@ -193,14 +192,14 @@ int main(int argc, char** argv)
 
   // establish baseline time
   float baseline = benchmark_avg(da, db, dc, hc, 1, num_elements,
-    iterations, finished_tasks, &start, &stop);
+    finished_tasks, &start, &stop);
 
-  printf("Average baseline time (single SM) for %i iterations: %f ms\n", iterations, baseline);
+  printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS, baseline);
 
   float ntime = benchmark_avg(da, db, dc, hc, max_sms, num_elements,
-    iterations, finished_tasks, &start, &stop);
+    finished_tasks, &start, &stop);
 
-  printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, iterations, ntime);
+  printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, ITERATIONS, ntime);
   printf("Scalability overhead: %f%%\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
 
   // cleanup
