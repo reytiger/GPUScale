@@ -18,7 +18,7 @@ typedef void (*kernelPointer_t)(int*, int*, int*, int);
 
 
 // ---All math kernels----
-__device__ void vecadd(int *c, int* a, int* b, int gid)
+__device__ __noinline__ void vecadd(int *c, int* a, int* b, int gid)
 {
   c[gid] = a[gid] + b[gid];
 }
@@ -26,10 +26,10 @@ __device__ void vecadd(int *c, int* a, int* b, int gid)
 
 // the kernels avilable. Array resides on the device
 // since the host cannot set this value directly
-__device__ kernelPointer_t d_kp[] = { vecadd };
+__device__ __noinline__ kernelPointer_t d_kp[] = { vecadd };
 
 
-__device__ uint get_smid(void)
+__device__ __noinline__ uint get_smid(void)
 {
    uint ret;
    asm("mov.u32 %0, %smid;" : "=r"(ret) );
