@@ -127,8 +127,9 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
   float total_time = 0.f;
   float elapsed_time = 0.f;
 
-  // reset work distribution counters
-  cudaMemset(d_wd, 0, sizeof(int) * NUM_SMS);
+  if(d_wd)
+    // reset work distribution counters
+    cudaMemset(d_wd, 0, sizeof(int) * NUM_SMS);
 
   for(unsigned int i = 0; i < iterations; ++i)
   {
@@ -181,26 +182,31 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
     ntime = baseline;
   }
 
-  // get the work distribution stats
-  cudaMemcpy(h_wd, d_wd, NUM_SMS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-
   printf("Average time (%d SMs) for %i iterations: %f ms\n", max_sms, ITERATIONS, ntime);
-  printf("Scalability overhead: %f%%\nWork distribution:\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
+  printf("Scalability overhead: %f%%\n", (ntime / (baseline / max_sms) - 1.0f) * 100.0f);
 
-  unsigned int total_work = 0;
-  for(int i = 0; i < NUM_SMS; ++i)
-    total_work += h_wd[i] / ITERATIONS;
-
-  printf("Total thread block work units: %u\n", total_work);
-  for(int i = 0; i < NUM_SMS; ++i)
+  // get the work distribution stats
+  if(d_wd)
   {
-    // skip unused SMs
-    if(h_wd[i] == 0)
-      continue;
+    cudaMemcpy(h_wd, d_wd, NUM_SMS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-    printf("  SM #%d - %u tasks\n", i, h_wd[i] / ITERATIONS);
-    float percentage = (h_wd[i] / ITERATIONS / (float)total_work) * 100.f;
-    printf("  SM #%d - %f%%\n", i, percentage);
+    printf("Work distribution:\n");
+
+    unsigned int total_work = 0;
+    for(int i = 0; i < NUM_SMS; ++i)
+      total_work += h_wd[i] / ITERATIONS;
+
+    printf("Total thread block work units: %u\n", total_work);
+    for(int i = 0; i < NUM_SMS; ++i)
+    {
+      // skip unused SMs
+      if(h_wd[i] == 0)
+        continue;
+
+      printf("  SM #%d - %u tasks\n", i, h_wd[i] / ITERATIONS);
+      float percentage = (h_wd[i] / ITERATIONS / (float)total_work) * 100.f;
+      printf("  SM #%d - %f%%\n", i, percentage);
+    }
   }
 }
 
@@ -261,6 +267,7 @@ int main(int argc, char** argv)
   cudaEventCreate(&stop);
 
   bool allSMCombos = false;
+  bool collectDist = false;
 
   // function pointers to the desired kernel
   kernelPointer_t h_kp;
@@ -280,7 +287,18 @@ int main(int argc, char** argv)
     {
       printf("Specify # per run)");
     }
-    printf("\n2 - Vector Addition\n");
+
+    printf("\n2 - Toggle work distribution collection & display (currently: ");
+    if(collectDist)
+    {
+      printf("ON)");
+    }
+    else
+    {
+      printf("OFF)");
+    }
+
+    printf("\n3 - Vector Addition\n");
     printf("Please enter a choice: ");
     scanf(" %d" , &userChoice);
 
@@ -300,9 +318,13 @@ int main(int argc, char** argv)
         allSMCombos = !allSMCombos;
         continue;
       case 2:
+        collectDist = !collectDist;
+        continue;
+      case 3:
         // TODO add more cases
-        kernelIdx = userChoice - 2;
+        kernelIdx = userChoice - 3;
         break;
+
       default:
         printf("Could not recognize your choice\n");
         // retry menu
@@ -312,6 +334,10 @@ int main(int argc, char** argv)
     // get a pointer to the device function into host memory
     cudaMemcpyFromSymbol(&h_kp, d_kp[kernelIdx], sizeof(kernelPointer_t));
 
+    unsigned int *workDist = NULL;
+    if(collectDist)
+      workDist = d_wd;
+
     float baseline = 0.f;
     // run the indicated test
     if(allSMCombos)
@@ -319,7 +345,7 @@ int main(int argc, char** argv)
       baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
       for(int sms_count = 2; sms_count <= NUM_SMS; ++sms_count)
       {
-        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline, h_wd, d_wd);
+        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline, h_wd, workDist);
       }
     }
     else
@@ -332,7 +358,7 @@ int main(int argc, char** argv)
       }
 
       baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
-      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks, &start, &stop, baseline, h_wd, d_wd);
+      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks, &start, &stop, baseline, h_wd, workDist);
     }
   }
   // return 0;
