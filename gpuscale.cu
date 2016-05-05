@@ -57,7 +57,7 @@ __global__ void limit_sms_kernel(kernelPointer_t kp, int *c, int *a, int *b, uns
       taskid = atomicInc(&finished_tasks[0], INT_MAX); 
 
       // record the work being done by this block on the SM
-      if(d_wd && taskid >= ntasks)
+      if(d_wd && taskid <= ntasks)
       {
         atomicInc(&d_wd[smid], INT_MAX);
       }
@@ -103,7 +103,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   cudaEventRecord(*start);
 
   // perform the math op
-  limit_sms_kernel<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+  limit_sms_kernel<<<NUM_SMS * 12, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
@@ -195,7 +195,8 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   for(int i = 0; i < NUM_SMS; ++i)
   {
     printf("  SM #%d - %u tasks\n", i, h_wd[i] / ITERATIONS);
-    printf("  SM #%d - %f%%\n", i, h_wd[i] / ITERATIONS / num_elements);
+    float percentage = (h_wd[i] / ITERATIONS / (float)total_work) * 100.f;
+    printf("  SM #%d - %f%%\n", i, percentage);
   }
 }
 
