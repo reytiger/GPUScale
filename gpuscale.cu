@@ -41,10 +41,18 @@ __device__ void vecdiv(int *c, int* a, int* b, int gid)
   c[gid] = a[gid] / b[gid];
 }
 
-// the kernels avilable. Array resides on the device
-// since the host cannot set this value directly
-__device__ kernelPointer_t d_kp[] = { vecadd, vecsub, vecmult, vecdiv };
+__global__ setFP(int choice)
+{
+  switch(choice)
+  {
+  case 1:
 
+
+  }
+}
+
+// a pointer to the math kernel to execute
+__device__ kernelPointer_t kp;
 
 __device__ uint get_smid(void)
 {
@@ -434,7 +442,13 @@ int main(int argc, char** argv)
     }
 
     // get a pointer to the device function into host memory
-    cudaMemcpyFromSymbol(&h_kp, d_kp[kernelIdx], sizeof(kernelPointer_t));
+    cudaError_t err = cudaMemcpyFromSymbol(&h_kp, "addkp", sizeof(kernelPointer_t));
+    if(err != cudaSuccess)
+    {
+      fprintf(stderr, "Error, could not resolve function pointer from GPU, error code: %d\n", err);
+      
+      exit(1);
+    }
 
 
     // figure out what result to expect based on which kernel was invoked
