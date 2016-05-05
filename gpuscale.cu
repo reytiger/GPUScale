@@ -37,8 +37,65 @@ __device__ uint get_smid(void)
 }
 
 
-// runs a kernel on a specified number of gpus
-__global__ void limit_sms_kernel(kernelPointer_t kp, int *c, int *a, int *b, unsigned int max_sms,
+// runs a kernel on a specified number of gpus using args that are first buffered in L2 shared memory
+__global__ void limit_sms_kernel_shared(kernelPointer_t kp, int *c, int *a, int *b, unsigned int max_sms,
+        unsigned int *finished_tasks, unsigned int ntasks, unsigned int *d_wd)
+{
+  // task id is shared amongst all threads in the block
+  __shared__ int taskid;
+  int smid = get_smid();
+  if(smid >= max_sms) 
+  {
+    return;
+  }
+
+  // the two operands and results storage space, as one matrix
+  extern __shared__ int L2[];
+
+  // split into three even sized arrays
+  // size_t sizePerOp = SHARED_SIZE / NUM_SMS / 16 / 3;
+  size_t sizePerOp = BLK_SIZE;
+  int *operand1 = L2;
+  int *operand2 = &operand1[sizePerOp];
+  int *result = &operand2[sizePerOp];
+
+  // infinite loop the thread to keep resident
+  while (1)
+  {
+    if(threadIdx.x == 0)
+    {
+      taskid = atomicInc(&finished_tasks[0], INT_MAX); 
+
+      // record the work being done by this block on the SM
+      if(d_wd && taskid <= ntasks)
+      {
+        atomicInc(&d_wd[smid], INT_MAX);
+      }
+    }
+    __syncthreads();
+
+    if(taskid >= ntasks)
+      return;
+    
+    int sumIdx = taskid * BLK_SIZE + threadIdx.x;
+
+    // load from global to shared
+    operand1[threadIdx.x] = a[sumIdx];
+    operand2[threadIdx.x] = b[sumIdx];
+    __syncthreads();
+
+    // launch the kernel using shared memory
+    (*kp)(result, operand1, operand2, threadIdx.x);
+
+    // copy result from shared back to global
+    c[sumIdx] = result[threadIdx.x];
+
+  }
+}
+
+
+// runs a kernel on a specified number of gpus using args in global memory
+__global__ void limit_sms_kernel_global(kernelPointer_t kp, int *c, int *a, int *b, unsigned int max_sms,
         unsigned int *finished_tasks, unsigned int ntasks, unsigned int *d_wd)
 {
   // task id is shared amongst all threads in the block
@@ -94,7 +151,7 @@ bool verify_result(int num_elements, int *resultArray)
 
 // launches the addition kernel and records timing information
 float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, unsigned int *d_wd)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, unsigned int *d_wd, bool shared_mem)
 {
   // reset the progress marker and result array
   cudaMemset(finished_tasks, 0, sizeof(unsigned int));
@@ -103,7 +160,15 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   cudaEventRecord(*start);
 
   // perform the math op
-  limit_sms_kernel<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+  if(shared_mem)
+  {
+    //size_t shared_per_block = SHARED_SIZE / NUM_SMS / 16;
+    limit_sms_kernel_shared<<<NUM_SMS * 16, BLK_SIZE, BLK_SIZE * 3 * sizeof(int)>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+  }
+  else
+  {
+    limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+  }
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
@@ -122,7 +187,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
 
 // runs the benchmark serveral times to get an average
 float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations, unsigned int *d_wd)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations, unsigned int *d_wd, bool shared_mem)
 {
   float total_time = 0.f;
   float elapsed_time = 0.f;
@@ -133,7 +198,7 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 
   for(unsigned int i = 0; i < iterations; ++i)
   {
-    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd);
+    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd, shared_mem);
     if(elapsed_time == TIME_FAIL)
     {
       // repeat this iteration
@@ -151,11 +216,11 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 
 
 float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, bool shared_mem)
 {
   printf("Running %d iterations over %d elements to establish baseline...\n", ITERATIONS * 3, num_elements);
   // establish baseline time
-  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL) / 3;
+  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL, shared_mem) / 3;
 
   printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS * 3, baseline);
 
@@ -166,7 +231,7 @@ float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc,
 // main test driver
 void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline,
-  unsigned int* h_wd, unsigned int *d_wd)
+  unsigned int* h_wd, unsigned int *d_wd, bool shared_mem)
 {
   printf("\nRunning %d iterations on %d SMs...\n", ITERATIONS, max_sms);
   float ntime = 0.f;
@@ -175,7 +240,7 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   if(max_sms > 1)
   {
     ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
-      finished_tasks, start, stop, ITERATIONS, d_wd);
+      finished_tasks, start, stop, ITERATIONS, d_wd, shared_mem);
   }
   else
   {
@@ -268,6 +333,7 @@ int main(int argc, char** argv)
 
   bool allSMCombos = false;
   bool collectDist = false;
+  bool useSharedMem = false;
 
   // function pointers to the desired kernel
   kernelPointer_t h_kp;
@@ -298,7 +364,16 @@ int main(int argc, char** argv)
       printf("OFF)");
     }
 
-    printf("\n3 - Vector Addition\n");
+    printf("\n3 - Toggle using shared L2 cache or global memory (currently: ");
+    if(useSharedMem)
+    {
+      printf("Shared)");
+    }
+    else
+    {
+      printf("Global)");
+    }
+    printf("\n4 - Vector Addition\n");
     printf("Please enter a choice: ");
     scanf(" %d" , &userChoice);
 
@@ -321,8 +396,11 @@ int main(int argc, char** argv)
         collectDist = !collectDist;
         continue;
       case 3:
+        useSharedMem = !useSharedMem;
+        continue;
+      case 4:
         // TODO add more cases
-        kernelIdx = userChoice - 3;
+        kernelIdx = userChoice - 4;
         break;
 
       default:
@@ -342,10 +420,11 @@ int main(int argc, char** argv)
     // run the indicated test
     if(allSMCombos)
     {
-      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
+      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem);
       for(int sms_count = 2; sms_count <= NUM_SMS; ++sms_count)
       {
-        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline, h_wd, workDist);
+        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks,
+            &start, &stop, baseline, h_wd, workDist, useSharedMem);
       }
     }
     else
@@ -357,8 +436,9 @@ int main(int argc, char** argv)
         scanf(" %d", &sms_choice);
       }
 
-      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
-      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks, &start, &stop, baseline, h_wd, workDist);
+      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem);
+      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks,
+          &start, &stop, baseline, h_wd, workDist, useSharedMem);
     }
   }
   // return 0;
