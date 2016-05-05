@@ -103,7 +103,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   cudaEventRecord(*start);
 
   // perform the math op
-  limit_sms_kernel<<<NUM_SMS * 16 * 2, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+  limit_sms_kernel<<<NUM_SMS * 16 / 2, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
@@ -194,6 +194,10 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   printf("Total thread block work units: %u\n", total_work);
   for(int i = 0; i < NUM_SMS; ++i)
   {
+    // skip unused SMs
+    if(h_wd[i] == 0)
+      continue;
+
     printf("  SM #%d - %u tasks\n", i, h_wd[i] / ITERATIONS);
     float percentage = (h_wd[i] / ITERATIONS / (float)total_work) * 100.f;
     printf("  SM #%d - %f%%\n", i, percentage);
