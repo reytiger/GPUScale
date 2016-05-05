@@ -103,7 +103,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   cudaEventRecord(*start);
 
   // perform the math op
-  limit_sms_kernel<<<NUM_SMS * 12, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+  limit_sms_kernel<<<NUM_SMS * 16 * 2, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
 
   cudaDeviceSynchronize();
   cudaEventRecord(*stop);
@@ -313,7 +313,7 @@ int main(int argc, char** argv)
     if(allSMCombos)
     {
       baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop);
-      for(int sms_count = 1; sms_count <= NUM_SMS; ++sms_count)
+      for(int sms_count = 2; sms_count <= NUM_SMS; ++sms_count)
       {
         run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks, &start, &stop, baseline, h_wd, d_wd);
       }
