@@ -24,9 +24,26 @@ __device__ void vecadd(int *c, int* a, int* b, int gid)
 }
 
 
+__device__ void vecsub(int *c, int* a, int* b, int gid)
+{
+  c[gid] = a[gid] - b[gid];
+}
+
+
+__device__ void vecmult(int *c, int* a, int* b, int gid)
+{
+  c[gid] = a[gid] * b[gid];
+}
+
+
+__device__ void vecdiv(int *c, int* a, int* b, int gid)
+{
+  c[gid] = a[gid] / b[gid];
+}
+
 // the kernels avilable. Array resides on the device
 // since the host cannot set this value directly
-__device__ kernelPointer_t d_kp[] = { vecadd };
+__device__ kernelPointer_t d_kp[] = { vecadd, vecsub, vecmult, vecdiv };
 
 
 __device__ uint get_smid(void)
@@ -131,12 +148,12 @@ __global__ void limit_sms_kernel_global(kernelPointer_t kp, int *c, int *a, int 
 
 
 // verifies that the GPU computed the correct results
-bool verify_result(int num_elements, int *resultArray)
+bool verify_result(int num_elements, int *resultArray, int expected)
 {
   int wrongCount = 0;
   for(int i = 0; i < num_elements; ++i)
   {
-    if(resultArray[i] != 2) {
+    if(resultArray[i] != expected) {
       fprintf(stderr, "Wrong result at %d : %d\n", i, resultArray[i]);
       ++wrongCount;
     }
@@ -151,7 +168,7 @@ bool verify_result(int num_elements, int *resultArray)
 
 // launches the addition kernel and records timing information
 float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, unsigned int *d_wd, bool shared_mem)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, unsigned int *d_wd, bool shared_mem, int expected)
 {
   // reset the progress marker and result array
   cudaMemset(finished_tasks, 0, sizeof(unsigned int));
@@ -179,7 +196,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
 
   cudaMemcpy(hc, dc, num_elements * sizeof(int), cudaMemcpyDeviceToHost);
 
-  if(!verify_result(num_elements, hc))
+  if(!verify_result(num_elements, hc, expected))
     return TIME_FAIL;
   return elapsedTime;
 }
@@ -187,7 +204,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
 
 // runs the benchmark serveral times to get an average
 float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations, unsigned int *d_wd, bool shared_mem)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations, unsigned int *d_wd, bool shared_mem, int expected)
 {
   float total_time = 0.f;
   float elapsed_time = 0.f;
@@ -198,7 +215,7 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 
   for(unsigned int i = 0; i < iterations; ++i)
   {
-    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd, shared_mem);
+    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd, shared_mem, expected);
     if(elapsed_time == TIME_FAIL)
     {
       // repeat this iteration
@@ -216,11 +233,11 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 
 
 float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int num_elements,
-  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, bool shared_mem)
+  unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, bool shared_mem, int expected)
 {
   printf("Running %d iterations over %d elements to establish baseline...\n", ITERATIONS * 3, num_elements);
   // establish baseline time
-  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL, shared_mem) / 3;
+  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL, shared_mem, expected) / 3;
 
   printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS * 3, baseline);
 
@@ -231,7 +248,7 @@ float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc,
 // main test driver
 void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline,
-  unsigned int* h_wd, unsigned int *d_wd, bool shared_mem)
+  unsigned int* h_wd, unsigned int *d_wd, bool shared_mem, int expected)
 {
   printf("\nRunning %d iterations on %d SMs...\n", ITERATIONS, max_sms);
   float ntime = 0.f;
@@ -240,7 +257,7 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   if(max_sms > 1)
   {
     ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
-      finished_tasks, start, stop, ITERATIONS, d_wd, shared_mem);
+      finished_tasks, start, stop, ITERATIONS, d_wd, shared_mem, expected);
   }
   else
   {
@@ -344,6 +361,7 @@ int main(int argc, char** argv)
   {
     printf("\n\n----GPU Scalability Benchmarks---------------\nSelect an option\n"
             "0 - Quit\n"
+            "--OPTIONS--\n"
             "1 - Toggle specifing # SMs or all sucessively (currently: ");
     if(allSMCombos)
     {
@@ -373,7 +391,11 @@ int main(int argc, char** argv)
     {
       printf("Global)");
     }
-    printf("\n4 - Vector Addition\n");
+    printf("\n--KERNELS--\n"
+        "4 - Vector Addition\n"
+        "5 - Vector Subtraction\n"
+        "6 - Vector Multiplication\n"
+        "7 - Vector Division\n");
     printf("Please enter a choice: ");
     scanf(" %d" , &userChoice);
 
@@ -399,7 +421,9 @@ int main(int argc, char** argv)
         useSharedMem = !useSharedMem;
         continue;
       case 4:
-        // TODO add more cases
+      case 5:
+      case 6:
+      case 7:
         kernelIdx = userChoice - 4;
         break;
 
@@ -412,6 +436,26 @@ int main(int argc, char** argv)
     // get a pointer to the device function into host memory
     cudaMemcpyFromSymbol(&h_kp, d_kp[kernelIdx], sizeof(kernelPointer_t));
 
+
+    // figure out what result to expect based on which kernel was invoked
+    int expectedValue;
+    switch(userChoice - 4)
+    {
+    case 0: //add
+      expectedValue = 2;
+      break;
+    case 1: //sub
+      expectedValue = 0;
+      break;
+    case 2: //mult
+    case 3: //div
+      expectedValue = 1;
+      break;
+    default:
+      fprintf(stderr, "Error! Could not determine kernel specified!");
+      exit(2);
+    }
+
     unsigned int *workDist = NULL;
     if(collectDist)
       workDist = d_wd;
@@ -420,11 +464,11 @@ int main(int argc, char** argv)
     // run the indicated test
     if(allSMCombos)
     {
-      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem);
+      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem, expectedValue);
       for(int sms_count = 2; sms_count <= NUM_SMS; ++sms_count)
       {
         run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks,
-            &start, &stop, baseline, h_wd, workDist, useSharedMem);
+            &start, &stop, baseline, h_wd, workDist, useSharedMem, expectedValue);
       }
     }
     else
@@ -436,10 +480,9 @@ int main(int argc, char** argv)
         scanf(" %d", &sms_choice);
       }
 
-      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem);
+      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem, expectedValue);
       run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks,
-          &start, &stop, baseline, h_wd, workDist, useSharedMem);
+          &start, &stop, baseline, h_wd, workDist, useSharedMem, expectedValue);
     }
   }
-  // return 0;
 }
