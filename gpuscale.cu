@@ -41,18 +41,30 @@ __device__ void vecdiv(int *c, int* a, int* b, int gid)
   c[gid] = a[gid] / b[gid];
 }
 
-__global__ setFP(int choice)
-{
-  switch(choice)
-  {
-  case 1:
-
-
-  }
-}
 
 // a pointer to the math kernel to execute
 __device__ kernelPointer_t kp;
+
+
+// helper function to change which math op is run
+__global__ void setKernelToRun(int choice)
+{
+  switch(choice)
+  {
+  case 0:
+    kp = vecadd;
+    break;
+  case 1:
+    kp = vecsub;
+    break;
+  case 2:
+    kp = vecmult;
+    break;
+  case 3:
+    kp = vecdiv;
+    break;
+  }
+}
 
 __device__ uint get_smid(void)
 {
@@ -63,7 +75,7 @@ __device__ uint get_smid(void)
 
 
 // runs a kernel on a specified number of gpus using args that are first buffered in L2 shared memory
-__global__ void limit_sms_kernel_shared(kernelPointer_t kp, int *c, int *a, int *b, unsigned int max_sms,
+__global__ void limit_sms_kernel_shared(int *c, int *a, int *b, unsigned int max_sms,
         unsigned int *finished_tasks, unsigned int ntasks, unsigned int *d_wd)
 {
   // task id is shared amongst all threads in the block
@@ -120,7 +132,7 @@ __global__ void limit_sms_kernel_shared(kernelPointer_t kp, int *c, int *a, int 
 
 
 // runs a kernel on a specified number of gpus using args in global memory
-__global__ void limit_sms_kernel_global(kernelPointer_t kp, int *c, int *a, int *b, unsigned int max_sms,
+__global__ void limit_sms_kernel_global(int *c, int *a, int *b, unsigned int max_sms,
         unsigned int *finished_tasks, unsigned int ntasks, unsigned int *d_wd)
 {
   // task id is shared amongst all threads in the block
@@ -175,7 +187,7 @@ bool verify_result(int num_elements, int *resultArray, int expected)
 
 
 // launches the addition kernel and records timing information
-float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_sms, int num_elements,
+float benchmark(int* da, int* db, int* dc, int *hc, int max_sms, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, unsigned int *d_wd, bool shared_mem, int expected)
 {
   // reset the progress marker and result array
@@ -188,11 +200,11 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
   if(shared_mem)
   {
     //size_t shared_per_block = SHARED_SIZE / NUM_SMS / 16;
-    limit_sms_kernel_shared<<<NUM_SMS * 16, BLK_SIZE, BLK_SIZE * 3 * sizeof(int)>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+    limit_sms_kernel_shared<<<NUM_SMS * 16, BLK_SIZE, BLK_SIZE * 3 * sizeof(int)>>> (dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
   }
   else
   {
-    limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (kp, dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
+    limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (dc, da, db, max_sms, finished_tasks, BLK_NUM, d_wd);
   }
 
   cudaDeviceSynchronize();
@@ -211,7 +223,7 @@ float benchmark(kernelPointer_t kp, int* da, int* db, int* dc, int *hc, int max_
 
 
 // runs the benchmark serveral times to get an average
-float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
+float benchmark_avg(int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, int iterations, unsigned int *d_wd, bool shared_mem, int expected)
 {
   float total_time = 0.f;
@@ -223,7 +235,7 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 
   for(unsigned int i = 0; i < iterations; ++i)
   {
-    elapsed_time = benchmark(kp, da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd, shared_mem, expected);
+    elapsed_time = benchmark(da, db, dc, hc, max_sms, num_elements, finished_tasks, start, stop, d_wd, shared_mem, expected);
     if(elapsed_time == TIME_FAIL)
     {
       // repeat this iteration
@@ -240,12 +252,12 @@ float benchmark_avg(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int 
 }
 
 
-float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int num_elements,
+float establish_baseline(int* da, int *db, int* dc, int* hc, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, bool shared_mem, int expected)
 {
   printf("Running %d iterations over %d elements to establish baseline...\n", ITERATIONS * 3, num_elements);
   // establish baseline time
-  float baseline = benchmark_avg(kp, da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL, shared_mem, expected) / 3;
+  float baseline = benchmark_avg(da, db, dc, hc, 1, num_elements, finished_tasks, start, stop, ITERATIONS * 3, NULL, shared_mem, expected) / 3;
 
   printf("Average baseline time (single SM) for %i iterations: %f ms\n", ITERATIONS * 3, baseline);
 
@@ -254,7 +266,7 @@ float establish_baseline(kernelPointer_t kp, int* da, int *db, int* dc, int* hc,
 
 
 // main test driver
-void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
+void run_test(int* da, int *db, int* dc, int* hc, int max_sms, int num_elements,
   unsigned int *finished_tasks, cudaEvent_t* start, cudaEvent_t* stop, float baseline,
   unsigned int* h_wd, unsigned int *d_wd, bool shared_mem, int expected)
 {
@@ -264,7 +276,7 @@ void run_test(kernelPointer_t kp, int* da, int *db, int* dc, int* hc, int max_sm
   // a single SMs is equal to the baseline
   if(max_sms > 1)
   {
-    ntime = benchmark_avg(kp, da, db, dc, hc, max_sms, num_elements,
+    ntime = benchmark_avg(da, db, dc, hc, max_sms, num_elements,
       finished_tasks, start, stop, ITERATIONS, d_wd, shared_mem, expected);
   }
   else
@@ -360,9 +372,6 @@ int main(int argc, char** argv)
   bool collectDist = false;
   bool useSharedMem = false;
 
-  // function pointers to the desired kernel
-  kernelPointer_t h_kp;
-
   // main menu
   int userChoice = 0;
   for(;;)
@@ -441,15 +450,8 @@ int main(int argc, char** argv)
         continue;
     }
 
-    // get a pointer to the device function into host memory
-    cudaError_t err = cudaMemcpyFromSymbol(&h_kp, "addkp", sizeof(kernelPointer_t));
-    if(err != cudaSuccess)
-    {
-      fprintf(stderr, "Error, could not resolve function pointer from GPU, error code: %d\n", err);
-      
-      exit(1);
-    }
-
+    // choose the kernel to run
+    setKernelToRun<<<1,1>>>(kernelIdx);
 
     // figure out what result to expect based on which kernel was invoked
     int expectedValue;
@@ -478,10 +480,10 @@ int main(int argc, char** argv)
     // run the indicated test
     if(allSMCombos)
     {
-      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem, expectedValue);
+      baseline = establish_baseline(da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem, expectedValue);
       for(int sms_count = 2; sms_count <= NUM_SMS; ++sms_count)
       {
-        run_test(h_kp, da, db, dc, hc, sms_count, num_elements, finished_tasks,
+        run_test(da, db, dc, hc, sms_count, num_elements, finished_tasks,
             &start, &stop, baseline, h_wd, workDist, useSharedMem, expectedValue);
       }
     }
@@ -494,8 +496,8 @@ int main(int argc, char** argv)
         scanf(" %d", &sms_choice);
       }
 
-      baseline = establish_baseline(h_kp, da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem, expectedValue);
-      run_test(h_kp, da, db, dc, hc, sms_choice, num_elements, finished_tasks,
+      baseline = establish_baseline(da, db, dc, hc, num_elements, finished_tasks, &start, &stop, useSharedMem, expectedValue);
+      run_test(da, db, dc, hc, sms_choice, num_elements, finished_tasks,
           &start, &stop, baseline, h_wd, workDist, useSharedMem, expectedValue);
     }
   }
