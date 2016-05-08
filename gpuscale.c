@@ -149,17 +149,25 @@ float benchmark_avg(void* da, void *db, void* dc, void* hc, int active_sm_count,
     // randomly pick SMs to run on
     bool active_sms[NUM_SMS];
     for(int j = 0; j < NUM_SMS; ++j)
-      active_sms[j] = false;
-    
-    int num_picked = 0;
-    while(num_picked < active_sm_count)
     {
-      int idx = rand() % NUM_SMS;
-      if(active_sms[idx] == false)
+      if(active_sm_count == NUM_SMS)
+        active_sms[j] = true;
+      else
+        active_sms[j] = false;
+    }
+    
+    if(active_sm_count != NUM_SMS)
+    {
+      int num_picked = 0;
+      while(num_picked < active_sm_count)
       {
-        //printf("Picked SM #%d\n", idx);
-        active_sms[idx] = true;
-        ++num_picked;
+        int idx = rand() % NUM_SMS;
+        if(active_sms[idx] == false)
+        {
+          //printf("Picked SM #%d\n", idx);
+          active_sms[idx] = true;
+          ++num_picked;
+        }
       }
     }
 
@@ -481,6 +489,7 @@ double select_kernel(datatype_t dt, int *selected_kernel_idx)
 
     if(user_choice == 0)
     {
+      printf("\n\n");
       return expected_result;
     }
     else if(user_choice > 0 && user_choice < 5)
@@ -491,6 +500,7 @@ double select_kernel(datatype_t dt, int *selected_kernel_idx)
     else
     {
       printf("Could not recognize your choice\n");
+      printf("\n\n");
       return 0.0;
     }
 
