@@ -181,12 +181,12 @@ __global__ void limit_sms_kernel_shared(void *c, void *a, void *b, bool *active_
       ((int*)operand2)[threadIdx.x] = ((int*)b)[sumIdx];
       break;
     case FLOAT:
-      ((float*)operand1)[threadIdx.x] = ((int*)a)[sumIdx];
-      ((float*)operand2)[threadIdx.x] = ((int*)b)[sumIdx];
+      ((float*)operand1)[threadIdx.x] = ((float*)a)[sumIdx];
+      ((float*)operand2)[threadIdx.x] = ((float*)b)[sumIdx];
       break;
     case DOUBLE:
-      ((double*)operand1)[threadIdx.x] = ((int*)a)[sumIdx];
-      ((double*)operand2)[threadIdx.x] = ((int*)b)[sumIdx];
+      ((double*)operand1)[threadIdx.x] = ((double*)a)[sumIdx];
+      ((double*)operand2)[threadIdx.x] = ((double*)b)[sumIdx];
       break;
     }
     __syncthreads();
