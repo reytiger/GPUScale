@@ -145,7 +145,7 @@ float benchmark_avg(void* da, void *db, void* dc, void* hc, int active_sm_count,
   srand(time(NULL));
   for(unsigned int i = 0; i < iterations; ++i)
   {
-    printf("Picking SMs to run on...");
+    printf("Picking SMs to run on for iteration #%d...", i);
     // randomly pick SMs to run on
     bool active_sms[NUM_SMS];
     for(int j = 0; j < NUM_SMS; ++j)

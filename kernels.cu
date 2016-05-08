@@ -144,8 +144,12 @@ __global__ void limit_sms_kernel_shared(void *c, void *a, void *b, bool *active_
     result = &((int*)operand2)[block_size];
     break;
   case FLOAT:
+    operand2 = &((float*)operand1)[block_size];
+    result = &((float*)operand2)[block_size];
     break;
   case DOUBLE:
+    operand2 = &((double*)operand1)[block_size];
+    result = &((double*)operand2)[block_size];
     break;
   }
 
@@ -170,18 +174,39 @@ __global__ void limit_sms_kernel_shared(void *c, void *a, void *b, bool *active_
     int sumIdx = taskid * block_size + threadIdx.x;
 
     // load from global to shared
-    //TODO
-    /*
-    operand1[threadIdx.x] = a[sumIdx];
-    operand2[threadIdx.x] = b[sumIdx];
-    */
+    switch(data_type)
+    {
+    case INT:
+      ((int*)operand1)[threadIdx.x] = ((int*)a)[sumIdx];
+      ((int*)operand2)[threadIdx.x] = ((int*)b)[sumIdx];
+      break;
+    case FLOAT:
+      ((float*)operand1)[threadIdx.x] = ((int*)a)[sumIdx];
+      ((float*)operand2)[threadIdx.x] = ((int*)b)[sumIdx];
+      break;
+    case DOUBLE:
+      ((double*)operand1)[threadIdx.x] = ((int*)a)[sumIdx];
+      ((double*)operand2)[threadIdx.x] = ((int*)b)[sumIdx];
+      break;
+    }
     __syncthreads();
 
     // launch the kernel using shared memory
     (*kp)(result, operand1, operand2, threadIdx.x);
 
     // copy result from shared back to global
-    //c[sumIdx] = result[threadIdx.x];
+    switch(data_type)
+    {
+    case INT:
+      ((int*)c)[sumIdx] = ((int*)result)[threadIdx.x];
+      break;
+    case FLOAT:
+      ((float*)c)[sumIdx] = ((float*)result)[threadIdx.x];
+      break;
+    case DOUBLE:
+      ((double*)c)[sumIdx] = ((double*)result)[threadIdx.x];
+      break;
+    }
 
   }
 }
