@@ -21,8 +21,8 @@
 
 #define TIME_FAIL -1.0f
 
-typedef enum {ALL_SM_COMBOS = 0, COLLECT_LOAD_DIST, USE_SHARED} user_options;
-static const size_t OPTION_COUNT = 3;
+typedef enum {ALL_SM_COMBOS = 0, COLLECT_LOAD_DIST, USE_SHARED, WRITE_REPORT} user_options;
+static const size_t OPTION_COUNT = 4;
 
 const char *kernels[] = {"addition", "subtraction", "multiplication", "division"};
 
@@ -209,11 +209,15 @@ float establish_baseline(void* da, void *db, void* dc, void* hc, int num_element
 }
 
 
-void print_results(int active_sm_count, float baseline, float runtime, unsigned int *d_wd)
+void print_results(int active_sm_count, float baseline, float runtime, unsigned int *d_wd, FILE *results_file)
 {
-
+  float overhead = (runtime / (baseline / active_sm_count) - 1.0f) * 100.0f;
   printf("Average time (%d SMs) for %i iterations: %f ms\n", active_sm_count, ITERATIONS, runtime);
-  printf("Scalability overhead: %f%%\n", (runtime / (baseline / active_sm_count) - 1.0f) * 100.0f);
+  printf("Scalability overhead: %f%%\n", overhead);
+  if(results_file != NULL)
+  {
+    fprintf(results_file, "%02d\t\t%f\t%f\n", active_sm_count, runtime, overhead);
+  }
 
   // get the work distribution stats
   if(d_wd)
@@ -336,9 +340,31 @@ void run_test(int num_elements, bool *options, datatype_t dt, double expected_re
     }
   }
 
+  // optional file to write results into
+  FILE *results_file = NULL;
+  if(options[WRITE_REPORT])
+  {
+    // open a file to store the results in
+    char *filename;
+    printf("Enter a filename to save the test results under: ");
+    scanf("%ms", &filename);
+    results_file = fopen(filename, "w");
+    free(filename);
+
+    if(results_file == NULL)
+    {
+      fprintf(stderr, "Error! Could not open results.dat for writing!\n");
+      return;
+    }
+    // write the file header
+    fprintf(results_file, "Active SMs\tRuntime (ms)\tOverhead (%%)\n");
+  }
+
   float baseline = establish_baseline(da, db, dc, hc, num_elements, finished_tasks,
                                       &start, &stop, options, expected_result, dt);
 
+  // write the first line of the file
+  fprintf(results_file,"01\t\t%f\t0\n", baseline);
   float runtime = 0.f;
   // run one or many times?
   if(options[ALL_SM_COMBOS])
@@ -348,7 +374,7 @@ void run_test(int num_elements, bool *options, datatype_t dt, double expected_re
     {
       runtime = benchmark_avg(da, db, dc, hc, active_sm_count, num_elements,
         finished_tasks, &start, &stop, ITERATIONS, d_wd, options, expected_result, dt);
-      print_results(active_sm_count, baseline, runtime, d_wd);
+      print_results(active_sm_count, baseline, runtime, d_wd, results_file);
     }
   }
   else
@@ -358,16 +384,20 @@ void run_test(int num_elements, bool *options, datatype_t dt, double expected_re
       printf("\nRunning %d iterations on %d SMs...\n", ITERATIONS, active_sm_count);
       runtime = benchmark_avg(da, db, dc, hc, active_sm_count, num_elements,
         finished_tasks, &start, &stop, ITERATIONS, d_wd, options, expected_result, dt);
-      print_results(active_sm_count, baseline, runtime, d_wd);
+      print_results(active_sm_count, baseline, runtime, d_wd, results_file);
     }
     else
     {
       // a single SM is equal to the baseline
-      print_results(active_sm_count, baseline, baseline, d_wd);
+      print_results(active_sm_count, baseline, baseline, d_wd, results_file);
     }
   }
 
   // cleanup
+  if(options[WRITE_REPORT])
+  {
+    fclose(results_file);
+  }
   free(hc);
   cudaFree(da);
   cudaFree(db);
@@ -412,8 +442,18 @@ void set_options(bool *options, datatype_t *dt)
     {
       printf("Global)");
     }
+    printf("\n4 - Toggle writing results to file (Currently: ");
 
-    printf("\n4 - Change operand & result data type (currently: ");
+    if(options[WRITE_REPORT])
+    {
+      printf("Writing to file)");
+    }
+    else
+    {
+      printf("Terminal display only)");
+    }
+
+    printf("\n5 - Change operand & result data type (currently: ");
     switch(*dt)
     {
     case INT:
@@ -437,10 +477,11 @@ void set_options(bool *options, datatype_t *dt)
     case 1:
     case 2:
     case 3:
+    case 4:
       // toggle options
       options[user_choice - 1] = !options[user_choice - 1];
       break;
-    case 4:
+    case 5:
       printf("\n--DATA TYPE--\n"
              "1 - Integer\n"
              "2 - Single precision float\n"
@@ -539,6 +580,7 @@ int main(int argc, char** argv)
   options[ALL_SM_COMBOS] = true;
   options[COLLECT_LOAD_DIST] = false;
   options[USE_SHARED] = false;
+  options[WRITE_REPORT] = true;
 
   datatype_t selected_data_type = INT;
   int selected_kernel_idx = 0;
