@@ -17,7 +17,7 @@
 #define BLK_SIZE 128
 #define BLK_NUM 65536
 #define ITERATIONS 200
-// 2^24 items
+// 2^23 items
 
 #define TIME_FAIL -1.0f
 
@@ -363,8 +363,12 @@ void run_test(int num_elements, bool *options, datatype_t dt, double expected_re
   float baseline = establish_baseline(da, db, dc, hc, num_elements, finished_tasks,
                                       &start, &stop, options, expected_result, dt);
 
-  // write the first line of the file
-  fprintf(results_file,"01\t\t%f\t0\n", baseline);
+  if(options[WRITE_REPORT])
+  {
+    // write the first line of the file
+    fprintf(results_file,"01\t\t%f\t0\n", baseline);
+  }
+
   float runtime = 0.f;
   // run one or many times?
   if(options[ALL_SM_COMBOS])
