@@ -143,7 +143,7 @@ float benchmark(void *da, void *db, void *dc, void *hc, bool *active_sms, int nu
   }
 
   // sync with the device
-  //cudaDeviceSynchronize();
+  cudaDeviceSynchronize();
   cudaEventRecord(*stop);
   cudaEventSynchronize(*stop);
 
