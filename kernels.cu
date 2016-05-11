@@ -17,7 +17,7 @@ __device__ datatype_t data_type = INT;
 
 
 // ---All math kernels----
-__device__ __forceinline__ void vecadd(void *c, void *a, void *b, int gid)
+__device__ __noinline__ void vecadd(void *c, void *a, void *b, int gid)
 {
   switch(data_type)
   {
@@ -34,7 +34,7 @@ __device__ __forceinline__ void vecadd(void *c, void *a, void *b, int gid)
 }
 
 
-__device__ __forceinline__ void vecsub(void *c, void *a, void *b, int gid)
+__device__ __noinline__ void vecsub(void *c, void *a, void *b, int gid)
 {
   switch(data_type)
   {
@@ -51,7 +51,7 @@ __device__ __forceinline__ void vecsub(void *c, void *a, void *b, int gid)
 }
 
 
-__device__ __forceinline__ void vecmult(void *c, void *a, void *b, int gid)
+__device__ __noinline__ void vecmult(void *c, void *a, void *b, int gid)
 {
   switch(data_type)
   {
@@ -68,7 +68,7 @@ __device__ __forceinline__ void vecmult(void *c, void *a, void *b, int gid)
 }
 
 
-__device__ __forceinline__ void vecdiv(void *c, void *a, void *b, int gid)
+__device__ __noinline__ void vecdiv(void *c, void *a, void *b, int gid)
 {
   switch(data_type)
   {
@@ -110,7 +110,7 @@ __global__ void set_kernel_to_run(int choice)
   }
 }
 
-__device__ __forceinline__ uint get_smid(void)
+__device__ __noinline__ uint get_smid(void)
 {
    uint ret;
    asm("mov.u32 %0, %smid;" : "=r"(ret) );
