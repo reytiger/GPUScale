@@ -192,7 +192,10 @@ __global__ void limit_sms_kernel_shared(void *c, void *a, void *b, bool *active_
     __syncthreads();
 
     // launch the kernel using shared memory
-    (*kp)(result, operand1, operand2, threadIdx.x);
+    for(int x = 0; x < 100; ++x)
+    {
+      (*kp)(result, operand1, operand2, threadIdx.x);
+    }
 
     // copy result from shared back to global
     switch(data_type)
@@ -243,6 +246,9 @@ __global__ void limit_sms_kernel_global(void *c, void *a, void *b, bool *active_
       return;
 
     // launch the kernel
-    (*kp)(c, a, b, taskid * block_size + threadIdx.x);
+    for(int x = 0; x < 100; ++x)
+    {
+      (*kp)(c, a, b, taskid * block_size + threadIdx.x);
+    }
   }
 }
