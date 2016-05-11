@@ -104,7 +104,7 @@ float benchmark(void *da, void *db, void *dc, void *hc, bool *active_sms, int nu
   if(options[USE_SHARED])
   {
     // allocate 3 data elements for each thread in each block
-    limit_sms_kernel_shared<<<NUM_SMS * 8, BLK_SIZE, BLK_SIZE * 3 * data_size>>> (dc, da, db, active_sms,
+    limit_sms_kernel_shared<<<NUM_SMS * 32, BLK_SIZE, BLK_SIZE * 3 * data_size>>> (dc, da, db, active_sms,
       finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
   }
   else
