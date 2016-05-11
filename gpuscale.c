@@ -30,6 +30,12 @@ const char *kernels[] = {"addition", "subtraction", "multiplication", "division"
 bool verify_result(int num_elements, void *result_array, double expected_value, datatype_t dt)
 {
   int wrong_count = 0;
+
+  // stores the first wrong value for display
+  int wrong_int = 0;
+  float wrong_float = 0.f;
+  double wrong_double = 0.0;
+
   for(int i = 0; i < num_elements; ++i)
   {
     // expected value is alwasy double, should promote ints and floats
@@ -50,24 +56,47 @@ bool verify_result(int num_elements, void *result_array, double expected_value, 
 
     if(!correct_result)
     {
-      switch(dt)
-      {
-      case INT:
-        fprintf(stderr, "Wrong result at %d : %d\n", i, ((int *)result_array)[i]);
-        break;
-      case FLOAT:
-        fprintf(stderr, "Wrong result at %d : %f\n", i, ((float *)result_array)[i]);
-        break;
-      case DOUBLE:
-        fprintf(stderr, "Wrong result at %d : %f\n", i, ((double *)result_array)[i]);
-        break;
-      }
       ++wrong_count;
+
+      if(wrong_count == 0)
+      {
+        switch(dt)
+        {
+        case INT:
+          //fprintf(stderr, "Wrong result at %d : %d\n", i, ((int *)result_array)[i]);
+          wrong_int = ((int*)result_array)[i];
+          break;
+        case FLOAT:
+          //fprintf(stderr, "Wrong result at %d : %f\n", i, ((float *)result_array)[i]);
+          wrong_float = ((float*)result_array)[i];
+          break;
+        case DOUBLE:
+          //fprintf(stderr, "Wrong result at %d : %f\n", i, ((double *)result_array)[i]);
+          wrong_double = ((double*)result_array)[i];
+          break;
+        }
+      }
     }
   }
 
   if(wrong_count > 1)
+  {
+    // display a digest of the errors
+    switch(dt)
+    {
+    case INT:
+      fprintf(stderr, "%d wrong results! Expected %d, but computed value: %d\n", wrong_count, (int)expected_value, wrong_int);
+      break;
+    case FLOAT:
+      fprintf(stderr, "%d wrong results! Expected %f, but computed value: %f\n", wrong_count, (float)expected_value, wrong_float);
+      break;
+    case DOUBLE:
+      fprintf(stderr, "%d wrong results! Expected %f, but computed value: %f\n", wrong_count, (double)expected_value, wrong_double);
+      break;
+    }
+
     return false; // indicates invalid results
+  }
 
   return true;
 }
@@ -179,9 +208,8 @@ float benchmark_avg(void* da, void *db, void* dc, void* hc, int active_sm_count,
     elapsed_time = benchmark(da, db, dc, hc, d_active_sms, num_elements, finished_tasks, start, stop, d_wd, options, expected_result, dt);
     if(elapsed_time == TIME_FAIL)
     {
-      printf("Iteration #%d had errors, retrying...\n", i);
-      int dummy;
-      scanf(" %d", &dummy);
+      printf("Iteration #%d had errors, retrying... Press enter to continue\n", i);
+      getchar();
       // repeat this iteration
       --i;
       continue;
