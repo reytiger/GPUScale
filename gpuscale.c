@@ -100,22 +100,17 @@ float benchmark(void *da, void *db, void *dc, void *hc, bool *active_sms, int nu
   // reset the result array
   cudaMemset(dc, 0, data_size * num_elements);
 
-  // TODO: DELETE ME
-  // Arithmetic intensity loop
-  for(int i = 0; i < 100; ++i)
+  // perform the math op
+  if(options[USE_SHARED])
   {
-    // perform the math op
-    if(options[USE_SHARED])
-    {
-      // allocate 3 data elements for each thread in each block
-      limit_sms_kernel_shared<<<NUM_SMS * 16, BLK_SIZE, BLK_SIZE * 3 * data_size>>> (dc, da, db, active_sms,
-        finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
-    }
-    else
-    {
-      limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (dc, da, db, active_sms,
-        finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
-    }
+    // allocate 3 data elements for each thread in each block
+    limit_sms_kernel_shared<<<NUM_SMS * 16, BLK_SIZE, BLK_SIZE * 3 * data_size>>> (dc, da, db, active_sms,
+      finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
+  }
+  else
+  {
+    limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (dc, da, db, active_sms,
+      finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
   }
 
   // sync with the device
