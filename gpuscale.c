@@ -138,14 +138,8 @@ float benchmark(void *da, void *db, void *dc, void *hc, bool *active_sms, int nu
   }
   else
   {
-    for(int i = 0; i < 100; ++i)
-    {
-      limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (dc, da, db, active_sms,
-        finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
-
-      // reset the progress marker
-      cudaMemset(finished_tasks, 0, sizeof(unsigned int));
-    }
+    limit_sms_kernel_global<<<NUM_SMS * 8, BLK_SIZE>>> (dc, da, db, active_sms,
+      finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
   }
 
   // sync with the device
