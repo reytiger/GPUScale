@@ -110,6 +110,7 @@ float benchmark(void *da, void *db, void *dc, void *hc, bool *active_sms, int nu
   // reset the progress marker
   cudaMemset(finished_tasks, 0, sizeof(unsigned int));
 
+  //TODO move just before kernel call
   cudaEventRecord(*start);
 
   size_t data_size = 0;
@@ -253,7 +254,7 @@ void print_results(int active_sm_count, float baseline, float runtime, unsigned 
     unsigned int h_wd[NUM_SMS];
     cudaMemcpy(h_wd, d_wd, NUM_SMS * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-    printf("Work distribution:\n");
+    printf("Average work distribution:\n");
 
     unsigned int total_work = 0;
     for(int i = 0; i < NUM_SMS; ++i)
@@ -268,7 +269,7 @@ void print_results(int active_sm_count, float baseline, float runtime, unsigned 
 
       printf("  SM #%d - %u tasks\n", i, h_wd[i] / ITERATIONS);
       float percentage = (h_wd[i] / ITERATIONS / (float)total_work) * 100.f;
-      printf("  SM #%d - %f%%\n", i, percentage);
+      printf("  SM #%d - %f%%\n\n", i, percentage);
     }
   }
   printf("\n\n");
@@ -354,7 +355,10 @@ void run_test(int num_elements, bool *options, datatype_t dt, double expected_re
 
   unsigned int *d_wd = NULL;
   if(options[COLLECT_LOAD_DIST])
+  {
     cudaMalloc((void**)&d_wd, sizeof(unsigned int) * NUM_SMS);
+    cudaMemset(d_wd, 0, sizeof(unsigned int) * NUM_SMS);
+  }
   
   alloc_with_datatype(num_elements, &hc, &da, &db, &dc, dt);
 
