@@ -138,7 +138,7 @@ float benchmark(void *da, void *db, void *dc, void *hc, bool *active_sms, int nu
   }
   else
   {
-    limit_sms_kernel_global<<<NUM_SMS * 32, BLK_SIZE>>> (dc, da, db, active_sms,
+    limit_sms_kernel_global<<<NUM_SMS * 16, BLK_SIZE>>> (dc, da, db, active_sms,
       finished_tasks, BLK_NUM, d_wd, BLK_SIZE);
   }
 
