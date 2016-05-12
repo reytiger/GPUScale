@@ -19,7 +19,6 @@ __device__ datatype_t data_type = INT;
 // ---All math kernels----
 __device__ void vecadd(void *c, void *a, void *b, int gid)
 {
-  for(int i = 0; i < 100; ++i)
   switch(data_type)
   {
   case INT:
